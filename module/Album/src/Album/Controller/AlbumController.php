@@ -15,12 +15,32 @@ class AlbumController extends AbstractActionController
     public function indexAction()
     {
 
+        // -tge- without pagination
+        /*
         return new ViewModel(array(
-            'albums' => $this->getAlbumTable()->fetchAll(),
+        'albums' => $this->getAlbumTable()->fetchAll(),
         ));
+        */
 
+        // -tge- with pagination
+
+        // grab the paginator from the AlbumTable
+        $paginator = $this->getAlbumTable()->fetchAll(true);
+        // set the current page to what has been passed in query string, or to 1 if none set
+        
+        // -tge- disabled - ugly ?page=#
+        //$paginator->setCurrentPageNumber((int) $this->params()->fromQuery('page', 1));
+        
+        // -tge- substituted by new route with /page/#
+        $paginator->setCurrentPageNumber((int) $this->params()->fromRoute('page'));
+        // set the number of items per page to 10
+        $paginator->setItemCountPerPage(10);
+
+        return new ViewModel(array(
+            'paginator' => $paginator
+        ));
     }
-
+    
     public function addAction()
     {
         $form = new AlbumForm();
