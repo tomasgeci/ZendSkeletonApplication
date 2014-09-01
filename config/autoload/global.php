@@ -25,4 +25,8 @@ return array(
             => 'Zend\Db\Adapter\AdapterServiceFactory',
         ),
     ),
+    
+    // -tge- items per page
+    'itemsPerPage' => 20,
+    
 );

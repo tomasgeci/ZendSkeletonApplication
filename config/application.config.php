@@ -4,7 +4,10 @@ return array(
     'modules' => array(
         'Application',
         'Album',
+        //'AlbumDoctrine', // -tge- doctrine version of albums
         'ZendDeveloperTools',
+        'DoctrineModule',
+        'DoctrineORMModule',
     ),
 
     // These are various options for the listeners attached to the ModuleManager

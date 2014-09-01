@@ -2,98 +2,105 @@
 
 namespace Album\Controller;
 
-use Zend\Mvc\Controller\AbstractActionController;
-use Zend\View\Model\ViewModel;
-use Album\Model\Album;          // <-- Add this import
-use Album\Form\AlbumForm;       // <-- Add this import
+use Zend\Mvc\Controller\AbstractActionController,
+Zend\View\Model\ViewModel, 
+Album\Form\AlbumForm,
+Doctrine\ORM\EntityManager,
+Album\Entity\Album;
+
+// -tge- for pagination
+use DoctrineORMModule\Paginator\Adapter\DoctrinePaginator as DoctrineAdapter;
+use Doctrine\ORM\Tools\Pagination\Paginator as ORMPaginator;
+use Zend\Paginator\Paginator;
 
 class AlbumController extends AbstractActionController
 {
 
     protected $albumTable;
 
+    /**
+    * @var Doctrine\ORM\EntityManager
+    */
+    protected $em;
+
+    public function setEntityManager(EntityManager $em)
+    {
+        $this->em = $em;
+    }
+
+    public function getEntityManager()
+    {
+        if (null === $this->em) {
+            $this->em = $this->getServiceLocator()->get('Doctrine\ORM\EntityManager');
+        }
+        return $this->em;
+    } 
+
     public function indexAction()
     {
 
-        // -tge- without pagination
-        /*
-        return new ViewModel(array(
-        'albums' => $this->getAlbumTable()->fetchAll(),
-        ));
-        */
+        $config = $this->getServiceLocator()->get('Config');
 
-        // -tge- with pagination
+        // nice pagination
+        $repository = $this->getEntityManager()->getRepository('Album\Entity\Album');
+        $adapter = new DoctrineAdapter(new ORMPaginator($repository->createQueryBuilder('album')));
+        $paginator = new Paginator($adapter);
 
-        // grab the paginator from the AlbumTable
-        $paginator = $this->getAlbumTable()->fetchAll(true);
-        // set the current page to what has been passed in query string, or to 1 if none set
-        
-        // -tge- disabled - ugly ?page=#
-        //$paginator->setCurrentPageNumber((int) $this->params()->fromQuery('page', 1));
-        
-        // -tge- substituted by new route with /page/#
-        $paginator->setCurrentPageNumber((int) $this->params()->fromRoute('page'));
-        // set the number of items per page to 10
-        $paginator->setItemCountPerPage(10);
+        // -tge- items per page from config
+        $paginator->setDefaultItemCountPerPage($config['itemsPerPage']);
+
+        $page = (int) $this->params()->fromRoute('page');
+
+        if($page) $paginator->setCurrentPageNumber($page);
 
         return new ViewModel(array(
             'paginator' => $paginator
         ));
     }
-    
+
     public function addAction()
     {
         $form = new AlbumForm();
-        $form->get('submit')->setValue('Add');
+        $form->get('submit')->setAttribute('label', 'Add');
 
         $request = $this->getRequest();
         if ($request->isPost()) {
             $album = new Album();
+
             $form->setInputFilter($album->getInputFilter());
             $form->setData($request->getPost());
-
-            if ($form->isValid()) {
-                $album->exchangeArray($form->getData());
-                $this->getAlbumTable()->saveAlbum($album);
+            if ($form->isValid()) { 
+                $album->populate($form->getData()); 
+                $this->getEntityManager()->persist($album);
+                $this->getEntityManager()->flush();
 
                 // Redirect to list of albums
-                return $this->redirect()->toRoute('album');
+                return $this->redirect()->toRoute('album'); 
             }
         }
+
         return array('form' => $form);
     }
 
     public function editAction()
     {
-        $id = (int) $this->params()->fromRoute('id', 0);
+        $id = (int)$this->getEvent()->getRouteMatch()->getParam('id');
         if (!$id) {
-            return $this->redirect()->toRoute('album', array(
-                'action' => 'add'
-            ));
-        }
+            return $this->redirect()->toRoute('album', array('action'=>'add'));
+        } 
+        $album = $this->getEntityManager()->find('Album\Entity\Album', $id);
 
-        // Get the Album with the specified id.  An exception is thrown
-        // if it cannot be found, in which case go to the index page.
-        try {
-            $album = $this->getAlbumTable()->getAlbum($id);
-        }
-        catch (\Exception $ex) {
-            return $this->redirect()->toRoute('album', array(
-                'action' => 'index'
-            ));
-        }
-
-        $form  = new AlbumForm();
+        $form = new AlbumForm();
+        $form->setBindOnValidate(false);
         $form->bind($album);
-        $form->get('submit')->setAttribute('value', 'Edit');
+        $form->get('submit')->setAttribute('label', 'Edit');
 
         $request = $this->getRequest();
         if ($request->isPost()) {
-            $form->setInputFilter($album->getInputFilter());
             $form->setData($request->getPost());
-
             if ($form->isValid()) {
-                $this->getAlbumTable()->saveAlbum($album);
+                $form->bindValues();
+                $this->getEntityManager()->flush();
 
                 // Redirect to list of albums
                 return $this->redirect()->toRoute('album');
@@ -108,38 +115,36 @@ class AlbumController extends AbstractActionController
 
     public function deleteAction()
     {
-        $id = (int) $this->params()->fromRoute('id', 0);
+        $id = (int)$this->getEvent()->getRouteMatch()->getParam('id');
         if (!$id) {
             return $this->redirect()->toRoute('album');
         }
 
+        $id = (int)$this->getEvent()->getRouteMatch()->getParam('id');
+        $album = $this->getEntityManager()->find('Album\Entity\Album', $id);
+
         $request = $this->getRequest();
         if ($request->isPost()) {
-            $del = $request->getPost('del', 'No');
-
+            $del = $request->getPost()->get('del', 'No');
             if ($del == 'Yes') {
-                $id = (int) $request->getPost('id');
-                $this->getAlbumTable()->deleteAlbum($id);
+                
+                if ($album) {
+                    $this->getEntityManager()->remove($album);
+                    $this->getEntityManager()->flush();
+                }
             }
 
             // Redirect to list of albums
-            return $this->redirect()->toRoute('album');
+            return $this->redirect()->toRoute('album', array(
+                'controller' => 'album',
+                'action'     => 'index',
+            ));
         }
 
         return array(
             'id'    => $id,
-            'album' => $this->getAlbumTable()->getAlbum($id)
+            'album' => $album
         );
-    }
-
-    // module/Album/src/Album/Controller/AlbumController.php:
-    public function getAlbumTable()
-    {
-        if (!$this->albumTable) {
-            $sm = $this->getServiceLocator();
-            $this->albumTable = $sm->get('Album\Model\AlbumTable');
-        }
-        return $this->albumTable;
     }
 
 }
