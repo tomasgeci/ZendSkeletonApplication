@@ -88,7 +88,14 @@ class AlbumController extends AbstractActionController
         if (!$id) {
             return $this->redirect()->toRoute('album', array('action'=>'add'));
         } 
+
+        // -tge- try to fetch album by ID
         $album = $this->getEntityManager()->find('Album\Entity\Album', $id);
+
+        // -tge- if not found then redirect with 301 to add
+        if(!is_object($album)){
+            return $this->redirect()->toRoute('album', array('action'=>'add')); 
+        }
 
         $form = new AlbumForm();
         $form->setBindOnValidate(false);
@@ -123,11 +130,17 @@ class AlbumController extends AbstractActionController
         $id = (int)$this->getEvent()->getRouteMatch()->getParam('id');
         $album = $this->getEntityManager()->find('Album\Entity\Album', $id);
 
+        // -tge- if not found then redirect with 301
+        if(!is_object($album)){
+            $this->getResponse()->setStatusCode(404); // return 404
+            return;
+        }
+
         $request = $this->getRequest();
         if ($request->isPost()) {
             $del = $request->getPost()->get('del', 'No');
             if ($del == 'Yes') {
-                
+
                 if ($album) {
                     $this->getEntityManager()->remove($album);
                     $this->getEntityManager()->flush();
